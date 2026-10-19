@@ -1,0 +1,236 @@
+<h1>S3R 与 S4R 拓扑 — 费曼学习法笔记</h1>
+
+<p class="post-meta">学习日期：2026-10-19 | 方法：费曼学习法 | 领域：航天器（卫星）电源调节 PCU</p>
+
+<h2>一、核心问题</h2>
+<p>理解卫星电源系统里 <strong>S3R / S4R</strong> 两种拓扑：它们各自解决什么问题、靠什么机制工作、两者唯一的硬件差别带来了哪些连锁影响。</p>
+
+<h2>二、关键概念</h2>
+
+<h3>1. 名字本身就是答案（数 S 的个数）</h3>
+<table>
+  <tr>
+    <th>缩写</th>
+    <th>全称</th>
+    <th>S 的个数</th>
+    <th>中文</th>
+  </tr>
+  <tr>
+    <td>S3R</td>
+    <td>Sequential Switching Shunt Regulator</td>
+    <td>3 个 S（S³R）</td>
+    <td>顺序 开关 分流 调节器</td>
+  </tr>
+  <tr>
+    <td>S4R</td>
+    <td>Sequential Switching Shunt Series Regulator</td>
+    <td>4 个 S（S⁴R）</td>
+    <td>顺序 开关 分流 <strong>串联</strong> 调节器</td>
+  </tr>
+</table>
+
+<div class="highlight-box">
+  <p><strong>S4R = S3R + 一个串联开关。</strong>多出来的第 4 个 S（Series，串联）就是两者唯一的硬件差别，也是全部优劣的来源。</p>
+</div>
+
+<h3>2. 基本术语</h3>
+<table>
+  <tr>
+    <th>术语</th>
+    <th>含义</th>
+  </tr>
+  <tr>
+    <td>太阳阵段（SA section）</td>
+    <td>把整块太阳电池板切成的 N 个独立发电单元，本质是<strong>电流源</strong>（电流由光照决定，不可调）</td>
+  </tr>
+  <tr>
+    <td>分流开关（shunt switch）</td>
+    <td>并联在段两端的开关（低 Rds(on) MOSFET）。<strong>闭合 = 该段被短路，电不被取出</strong></td>
+  </tr>
+  <tr>
+    <td>串联开关（series switch）</td>
+    <td><strong>S4R 新增</strong>，串联在段与蓄电池之间。<strong>闭合 = 该段电流直灌电池充电</strong></td>
+  </tr>
+  <tr>
+    <td>MEA</td>
+    <td>Main Error Amplifier，主误差放大器。检测母线电压，产出误差信号</td>
+  </tr>
+  <tr>
+    <td>顺序逻辑</td>
+    <td>由 MEA 信号驱动的一串比较器，决定"派哪一段值班"</td>
+  </tr>
+  <tr>
+    <td>值班段（active section）</td>
+    <td><strong>同一时刻唯一在做高频开关调节的那一段</strong></td>
+  </tr>
+  <tr>
+    <td>BCR</td>
+    <td>Battery Charge Regulator，蓄电池充电调节器（传统方案里的独立 Buck）</td>
+  </tr>
+</table>
+
+<h2>三、S3R 是怎么工作的</h2>
+<p>两句话：</p>
+<ol>
+  <li><strong>分而治之</strong> —— 太阳阵切成 N 段，每段自带分流开关。开关闭合 → 该段短路、电被丢弃；开关断开 → 该段的电顶上母线。</li>
+  <li><strong>顺序值班</strong> —— <strong>同一时刻只有一段在高频开关微调母线电压</strong>；其余段要么<strong>全导通</strong>（全力供电），要么<strong>全短路</strong>（直接丢弃）。值班段饱和时，调节权<strong>顺序移交</strong>给下一段。</li>
+</ol>
+
+<h3>为什么这样做好</h3>
+<table>
+  <tr>
+    <th>优点</th>
+    <th>原因</th>
+  </tr>
+  <tr>
+    <td>开关损耗极低</td>
+    <td>同一时刻只有一段在高频开关</td>
+  </tr>
+  <tr>
+    <td>EMC 极好</td>
+    <td>没有 N 路 PWM 同时动作的噪声叠加</td>
+  </tr>
+  <tr>
+    <td>滤波器可以做得很小</td>
+    <td>母线纹波小 → 省体积重量（卫星上极贵）</td>
+  </tr>
+  <tr>
+    <td>可靠性高、天然冗余</td>
+    <td>段是模块化的，滞环 + 顺序逻辑，无需复杂 PWM 芯片</td>
+  </tr>
+  <tr>
+    <td>太阳阵辐射干扰小</td>
+    <td>绝大多数段处于稳态，<strong>太阳阵这块"巨型天线"上几乎没有高频纹波电流</strong></td>
+  </tr>
+</table>
+
+<h3>代价</h3>
+<ul>
+  <li><strong>太阳阵不工作在最大功率点（非 MPPT）</strong>：每段要么全供要么全扔，母线电压被钳死 → 太阳阵串联片数必须按母线电压设计。</li>
+  <li><strong>分流的段会发热</strong>（见追问 2）。</li>
+  <li>段数越多调节越精细，但硬件越多。</li>
+</ul>
+
+<h2>四、S4R 解决了什么问题</h2>
+<p>S3R <strong>只管稳母线，不管充电</strong>。给电池充电要另配一台 BCR（通常是母线取电的 Buck）：</p>
+<blockquote>
+  太阳能 → 母线 → BCR(Buck) → 蓄电池 &nbsp;&nbsp;← 两级变换
+</blockquote>
+<p>两级变换 = 两次损耗 + 一整台大功率 Buck 的重量体积。</p>
+<p><strong>S4R 的点子</strong>：既然每段本来就有分流开关，<strong>再给它加一个串联开关直连电池</strong>。于是每段有了<strong>三种状态</strong>：</p>
+<table>
+  <tr>
+    <th>状态</th>
+    <th>分流开关</th>
+    <th>串联开关</th>
+    <th>这段的电去哪</th>
+  </tr>
+  <tr>
+    <td>① 丢弃</td>
+    <td><strong>闭合</strong></td>
+    <td>断开</td>
+    <td>短路，功率不被取出（冗余功率）</td>
+  </tr>
+  <tr>
+    <td>② 供电</td>
+    <td>断开</td>
+    <td>断开</td>
+    <td>经二极管顶上<strong>母线</strong></td>
+  </tr>
+  <tr>
+    <td>③ 充电</td>
+    <td>断开</td>
+    <td><strong>闭合</strong></td>
+    <td><strong>直灌蓄电池</strong>（单级直达）</td>
+  </tr>
+</table>
+
+<div class="highlight-green">
+  <p><strong>关键：</strong>S4R 依然保持"顺序"特性 —— 同一时刻<strong>依旧只有一段</strong>在高频开关（无论调母线还是调充电电流）。所以 S3R 的全部优点原样继承，同时把充电从两级压成<strong>单级</strong>，砍掉一整台 BCR。</p>
+</div>
+
+<h2>五、追问回顾（盲区在这里）</h2>
+
+<h3>追问 1：值班段凭什么能"精细"调节？它不是只会开和关吗？</h3>
+<p><strong>我的回答</strong>：依赖主误差信号，主误差信号由母线电压比例变换而来。<br>
+<strong>评价</strong>：✅ 对了控制信号的来源，❌ 但漏了执行机构。</p>
+<div class="highlight-box">
+  <p><strong>正确答案</strong>：误差信号本身不产生"中间值"。真正的机制是 —— 值班段的<strong>分流开关做高频 PWM（或滞环）开关</strong>，靠<strong>占空比的时间平均</strong>调出中间值。比如 30% 时间短路 + 70% 时间供电，平均下来这段就贡献 70% 的电流。<strong>"精细"来自时间维度的平均，不是模拟量连续调节。</strong>另外 MEA 信号还兼管"派哪一段值班"。</p>
+</div>
+
+<h3>追问 2：分流开关短路后，能量是不是耗散在 MOS 管上、流向大地了？</h3>
+<p><strong>我的回答</strong>：使用 MOS 管导通电阻小，多余的能量给了大地。<br>
+<strong>评价</strong>：⚠️ <strong>这条是错的，而且是经典误解</strong>。</p>
+<div class="highlight-box">
+  <p><strong>正确答案</strong>：</p>
+  <ol>
+    <li><strong>卫星上没有"大地"。</strong>分流是<strong>就地短路</strong>，电流只在「太阳阵段 → 开关 → 太阳阵段」这个小回路里循环，不流向任何地。</li>
+    <li><strong>能量主要不是耗散在 MOS 管上。</strong>关键是：段被短路时 <strong>V ≈ 0，所以 P = V·I ≈ 0 —— 这段电根本没被取出来</strong>。没被取出的太阳能<strong>变成热量留在太阳电池板自己身上</strong>（电池片工作在短路点，光能→载流子→复合发热）。MOS 管只承受 <strong>I²·Rds(on)</strong> 这一小点导通损耗（所以才要选低 Rds(on)）。</li>
+  </ol>
+  <p><strong>工程后果</strong>：<strong>分流时太阳阵会升温</strong>，所以分流调节的太阳阵必须专门做热设计。</p>
+</div>
+
+<h3>追问 3：母线调节和充电调节打架吗？谁优先？</h3>
+<p><strong>我的回答</strong>：母线优先级高。<br>
+<strong>评价</strong>：✅ <strong>正确</strong>。</p>
+<p><strong>补充</strong>：MEA 是主环，母线要多少先给多少，<strong>剩下的富余功率才分配给电池充电</strong>。S4R 里这个"分配"就是靠决定有多少段进入"串联充电"状态来实现；同时充电还受电池限流/限压保护约束（不能过充）。</p>
+
+<h3>追问 4：不搞"顺序"，让 N 段全部一起 PWM 会怎样？</h3>
+<p><strong>我的回答</strong>：EMI 大。<br>
+<strong>评价</strong>：⚠️ <strong>只答对 1/4</strong>，而且 EMI 不是最致命的。</p>
+<div class="highlight-box">
+  <p><strong>完整答案</strong>：</p>
+  <ol>
+    <li><strong>开关损耗 × N（最致命）</strong> —— 每段都高频开关，损耗成倍上升，效率显著下降。对靠太阳能过日子的卫星是硬伤。</li>
+    <li><strong>需要大滤波器</strong> —— N 路纹波叠加，母线滤波电容/电感要大幅加大 → 又重又占体积（发射成本极高）。</li>
+    <li><strong>EMI / 辐射</strong> ✅ —— 而且有个卫星特有的点：<strong>太阳阵本身就是巨大的"天线"</strong>，在上面跑高频纹波电流会直接辐射干扰。</li>
+    <li><strong>可靠性下降</strong> —— N 路 PWM 要同步/交错，故障模式变多，失去"单段开关"带来的低应力长寿命优势。</li>
+  </ol>
+</div>
+
+<h2>六、知识框架（Step 4 提炼）</h2>
+
+<h3>一句话版（讲给外行听）</h3>
+<blockquote>
+  卫星的太阳板发的电用不完又存不下，S3R 的办法是<strong>把太阳板切成 N 段，用不着的段直接短路扔掉，并且同一时刻只让一段在快速开关来精确稳住电压</strong>；S4R 则<strong>给每段再加一条直通电池的开关</strong>，让充电不再绕道母线、省掉一整套充电设备。
+</blockquote>
+
+<h3>类比总结</h3>
+<div class="highlight-green">
+  <p><strong>N 个水龙头往浴缸放水，每个龙头出水量固定（拧不小）。</strong></p>
+  <ul>
+    <li><strong>S3R</strong>：需要多少水就<strong>全开几个龙头</strong>，但只允许<strong>一个</strong>龙头处于"快速开开合合"的微调状态来精确稳住水位；其余要么<strong>全开</strong>，要么<strong>关掉让水流进地漏</strong>（= 短路分流）。因为<strong>只有一个龙头在滴答</strong>，所以噪音小、磨损小。</li>
+    <li><strong>S4R</strong>：在浴缸旁再放一个<strong>蓄水池（电池）</strong>，并且给每个龙头<strong>加一根可以直接通到蓄水池的管子</strong>。原来要先放进浴缸、再用水泵（BCR）抽进蓄水池（两级）；现在龙头一拧就直接流进蓄水池（<strong>单级</strong>），水泵全省了。</li>
+  </ul>
+</div>
+
+<h2>七、举一反三</h2>
+<ol>
+  <li><strong>为什么 S3R 的太阳阵必须按母线电压设计串联片数？</strong>如果母线电压改了，太阳阵还能用吗？（提示：母线电压钳位 → 每段输出电压被钳死 → 片数必须匹配）</li>
+  <li><strong>段数 N 怎么选？</strong>N 大了调节精细、纹波小，但硬件多、重。取舍点在哪？</li>
+  <li><strong>S4R 里如果一个串联开关误导通（故障），会发生什么？</strong>需要考虑哪些保护？（提示：太阳阵段直接接电池，是否有过充 / 反灌 / 电池过压风险）</li>
+  <li><strong>如果把"顺序"思想搬到你熟悉的 LLC/DAB 上</strong>，比如交错并联的多相 LLC，能不能借鉴"只让一相调频、其余相饱和"的思路来降低 EMI？与这里的约束有什么不同？</li>
+  <li><strong>日蚀期（卫星进入地球阴影）太阳阵不发电时，S3R/S4R 还有什么用？</strong>此时靠什么给母线供电？</li>
+</ol>
+
+<h2>八、掌握度自检清单</h2>
+<ul class="checklist">
+  <li>能说出 S3R / S4R 的全称，并解释为什么是 3 个 S / 4 个 S</li>
+  <li>能解释"顺序（Sequential）"到底指什么在排序</li>
+  <li>能说清<strong>同一时刻有几段在高频开关</strong>，以及这样做带来的 3 个好处</li>
+  <li>能解释值班段<strong>靠什么机制</strong>调出"中间值"（占空比时间平均，不是模拟量）</li>
+  <li>能说清分流时能量去哪了（<strong>不是 MOS 管，是太阳板自身发热</strong>），以及为什么卫星上没有"大地"</li>
+  <li>能画出 S4R 每段的三种状态表（分流/串联开关的组合 → 电的去向）</li>
+  <li>能解释 S4R 相比 S3R+BCR 省掉了什么、为什么效率更高</li>
+  <li>能说出母线与充电的优先级关系</li>
+  <li>能列出"全部一起 PWM"的至少 3 个后果</li>
+  <li>能说出 S3R 的两个主要代价（非 MPPT、分流发热需热设计）</li>
+</ul>
+
+<h2>九、遗留待深入</h2>
+<ul class="checklist">
+  <li>值班段 PWM 的具体实现方式（定频 PWM vs 滞环）以及各自对纹波/EMI 的影响</li>
+  <li>顺序逻辑的电路实现（比较器链 / 移位）与"移交"过程的暂态</li>
+  <li>太阳阵分段数与母线纹波的定量关系</li>
+  <li>S4R 的故障模式与保护设计（串联开关误导通、电池过充）</li>
+</ul>
