@@ -207,7 +207,7 @@
 <h2>七、举一反三</h2>
 <ol>
   <li><strong>为什么 S3R 的太阳阵必须按母线电压设计串联片数？</strong>如果母线电压改了，太阳阵还能用吗？（提示：母线电压钳位 → 每段输出电压被钳死 → 片数必须匹配）</li>
-  <li><strong>段数 N 怎么选？</strong>N 大了调节精细、纹波小，但硬件多、重。取舍点在哪？</li>
+  <li><strong>段数 N 怎么选？</strong>N 大了调节精细、纹波小，但硬件多、重。取舍点在哪？（已展开 → 见第九节）</li>
   <li><strong>S4R 里如果一个串联开关误导通（故障），会发生什么？</strong>需要考虑哪些保护？（提示：太阳阵段直接接电池，是否有过充 / 反灌 / 电池过压风险）</li>
   <li><strong>如果把"顺序"思想搬到你熟悉的 LLC/DAB 上</strong>，比如交错并联的多相 LLC，能不能借鉴"只让一相调频、其余相饱和"的思路来降低 EMI？与这里的约束有什么不同？</li>
   <li><strong>日蚀期（卫星进入地球阴影）太阳阵不发电时，S3R/S4R 还有什么用？</strong>此时靠什么给母线供电？</li>
@@ -225,12 +225,71 @@
   <li>能说出母线与充电的优先级关系</li>
   <li>能列出"全部一起 PWM"的至少 3 个后果</li>
   <li>能说出 S3R 的两个主要代价（非 MPPT、分流发热需热设计）</li>
+  <li>能说出母线纹波与分段数 N 的定量关系（∝ 1/N），并解释为什么“段多了开关的段就多了”是错的</li>
+  <li>能列出限制 N 继续增大的至少 3 条硬约束（并联 string 数、SADA 滑环通道、线束重量）</li>
 </ul>
 
-<h2>九、遗留待深入</h2>
+<h2>九、深入专题：太阳阵分段数 N 与母线纹波（定量）</h2>
+
+<div class="highlight-box">
+<p><strong>核心结论：母线纹波 ∝ 1/N —— N 翻倍，纹波减半。</strong></p>
+<p>原因：S3R 的定义决定了<strong>同一时刻只有一段在高频开关</strong>，与 N 无关；N 增大只是让<strong>每一段的电流更小</strong>（I_sec = I_SA / N），于是注入母线的电流台阶更小。</p>
+</div>
+
+<h3>推导</h3>
+<p>值班段向母线注入 <strong>0 ↔ I_sec 的方波电流</strong>（分流开关闭合 → 不供电；断开 → 供 I_sec），该方波被母线电容积分成三角波电压：</p>
+<ul>
+<li>容性分量：ΔV_C = I_sec · d(1−d) · T_s / C_bus，d = 0.5 时最大 → <strong>ΔV_C,max = I_SA · T_s /(4 · N · C_bus)</strong></li>
+<li>ESR 台阶：ΔV_ESR = I_sec · R_esr = <strong>I_SA · R_esr / N</strong></li>
+</ul>
+<p>两项都正比于 I_sec，即反比于 N；且都与 C_bus、T_s 成反比。</p>
+
+<h3>数值算例</h3>
+<p>取 V_bus = 100 V、I_SA = 100 A、C_bus = 470 µF、f_s = 20 kHz、ESR = 10 mΩ：</p>
+<table>
+  <tr><th>N</th><th>I_sec</th><th>容性纹波</th><th>ESR 台阶</th><th>合计（相对 100 V）</th></tr>
+  <tr><td>2</td><td>50 A</td><td>1.33 V</td><td>0.50 V</td><td>1.83 %（超 1% 规范）</td></tr>
+  <tr><td>4</td><td>25 A</td><td>0.66 V</td><td>0.25 V</td><td>0.92 %</td></tr>
+  <tr><td>8</td><td>12.5 A</td><td>0.33 V</td><td>0.13 V</td><td>0.46 %</td></tr>
+  <tr><td>16</td><td>6.25 A</td><td>0.17 V</td><td>0.06 V</td><td>0.23 %</td></tr>
+  <tr><td>32</td><td>3.13 A</td><td>0.08 V</td><td>0.03 V</td><td>0.11 %</td></tr>
+</table>
+<p>曲线是双曲的：<strong>前几段收益极陡，之后边际收益迅速变平</strong>。</p>
+
+<h3>二阶红利：N 大了还顺带省损耗</h3>
+<table>
+  <tr><th>损耗项</th><th>与 N 的关系</th></tr>
+  <tr><td>开/关重叠损耗 V_bus · I_sec · t_cross · f_s</td><td>∝ 1/N</td></tr>
+  <tr><td>段寄生电容损耗 C_sec · V_bus² · f_s（C_sec = C_SA/N）</td><td>∝ 1/N</td></tr>
+  <tr><td>分流管导通损耗 I_sec² · R_ds(on)</td><td>∝ 1/N²</td></tr>
+</table>
+<p>总开关损耗 ∝ 1/N。若把“总开关损耗预算”固定，N 增大释放出的预算可用于提高 f_s，此时容性纹波理论上可压到 <strong>∝ 1/N²</strong>；但 <strong>ESR 台阶与 f_s 无关</strong>，只随 1/N 走 —— 高频段 ESR 成为瓶颈，必须靠多只低 ESR 电容并联。</p>
+
+<h3>常见误解</h3>
+<ol>
+<li><strong>“段多了，开关的段就多了，纹波更大”</strong> —— 错。同时开关的段数恒为 1，与 N 无关；N 增大只是让这一段更小、更温和。</li>
+<li><strong>“提高 f_s 就能替代加大 N”</strong> —— 只对容性分量成立。ESR 台阶压不住；且 f_s 上升会让段寄生电容损耗线性增加，并让太阳阵（一块巨型天线）辐射恶化。</li>
+<li><strong>“加大母线电容就行”</strong> —— 容性分量 ∝ 1/C 确实有效，但航天上大电容又重又贵（铝电解基本不可用，靠薄膜/陶瓷）；ESR 台阶取决于并联后的总 ESR。</li>
+</ol>
+
+<h3>N 的上限：几条硬墙</h3>
+<ul>
+<li><strong>每段电压必须 ≥ V_bus + V_D</strong> → 每段串联片数被母线电压锁死，只能按<strong>并联电池串（string）</strong>分组 → <strong>N ≤ 并联 string 总数</strong>（最硬的物理约束）</li>
+<li><strong>SADA 滑环通道数</strong>：每段至少 1~2 根引线过滑环，N 段占 N+1 ~ 2N 个通道，滑环通道是整机稀缺资源</li>
+<li><strong>线束重量</strong>：2N 根导线从太阳阵拉到平台，长数米，直接计入发射成本</li>
+<li><strong>开关 / 隔离二极管 / 驱动 / 保护 ×N</strong>：故障点增多（但单段失效只损失 1/N 功率，N 大反而容错更好）</li>
+<li><strong>MEA 顺序逻辑</strong>：N 级比较器链或数字排序，复杂度随 N 上升</li>
+</ul>
+
+<div class="highlight-green">
+<p><strong>选型口诀</strong>：纹波 ∝ 1/N，开关损耗 ∝ 1/N，硬件代价 ∝ N；<strong>下限由纹波规范（常 ≤1%）定，上限由并联串数与滑环通道封顶。</strong>实际飞行型号常见 N = 12~32，且常不等分（按负载台阶与 string 分布配置）。</p>
+</div>
+
+<h2>十、遗留待深入</h2>
 <ul class="checklist">
   <li>值班段 PWM 的具体实现方式（定频 PWM vs 滞环）以及各自对纹波/EMI 的影响</li>
   <li>顺序逻辑的电路实现（比较器链 / 移位）与"移交"过程的暂态</li>
-  <li>太阳阵分段数与母线纹波的定量关系</li>
+  <li><s>太阳阵分段数与母线纹波的定量关系</s>（已展开 → 第九节）</li>
+  <li>太阳阵寄生电容与母线阻抗的谐振 / 阻尼设计（值班段 PWM 激发的高频振铃）</li>
   <li>S4R 的故障模式与保护设计（串联开关误导通、电池过充）</li>
 </ul>
